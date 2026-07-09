@@ -44,6 +44,9 @@ import Swinject
     var body: some Scene {
         WindowGroup {
             Main.RootView(resolver: FreeAPSApp.resolver)
+                .tint(EsseLineaTheme.accent)
+                .foregroundStyle(EsseLineaTheme.textPrimary)
+                .background(EsseLineaTheme.background.ignoresSafeArea())
                 .environment(\.managedObjectContext, dataController.persistentContainer.viewContext)
                 .environmentObject(Icons())
                 .onOpenURL(perform: handleURL)
