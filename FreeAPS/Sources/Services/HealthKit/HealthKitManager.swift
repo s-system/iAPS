@@ -31,7 +31,7 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
     private enum Config {
         // unwraped HKObjects
         static var readPermissions: Set<HKSampleType> {
-            Set([healthBGObject].compactMap { $0 }) }
+            Set([healthBGObject, healthCarbObject].compactMap { $0 }) }
 
         static var writePermissions: Set<HKSampleType> {
             Set([healthBGObject, healthCarbObject, healthInsulinObject].compactMap { $0 }) }
@@ -53,6 +53,7 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
 
     private let processQueue = DispatchQueue(label: "BaseHealthKitManager.processQueue")
     private var lifetime = Lifetime()
+    private var healthCarbObserverQuery: HKObserverQuery?
 
     var isAvailableOnCurrentDevice: Bool {
         HKHealthStore.isHealthDataAvailable()
@@ -76,6 +77,8 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
         broadcaster.register(PumpHistoryObserver.self, observer: self)
         broadcaster.register(NewGlucoseObserver.self, observer: self)
 
+        startObservingCarbsFromHealth()
+
         debug(.service, "HealthKitManager did create")
     }
 
@@ -98,6 +101,12 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
         }
 
         healthKitStore.requestAuthorization(toShare: Config.writePermissions, read: Config.readPermissions) { status, error in
+            if status {
+                self.processQueue.async {
+                    self.startObservingCarbsFromHealth()
+                    self.importCarbsFromHealth()
+                }
+            }
             completion?(status, error)
         }
     }
@@ -149,7 +158,7 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
 
         let carbsWithId = carbs.filter { c in
             guard c.id != nil else { return false }
-            return true
+            return c.enteredBy != CarbsEntry.appleHealth
         }
 
         func save(samples: [HKSample]) {
@@ -322,6 +331,116 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
             }
             .sink(receiveValue: save)
             .store(in: &lifetime)
+    }
+
+    private func startObservingCarbsFromHealth() {
+        guard settingsManager.settings.useAppleHealth,
+              healthCarbObserverQuery == nil,
+              let sampleType = Config.healthCarbObject
+        else { return }
+
+        let query = HKObserverQuery(sampleType: sampleType, predicate: nil) { [weak self] _, completionHandler, error in
+            if let error = error {
+                warning(.service, "Cannot observe HealthKit carb entries", error: error)
+                completionHandler()
+                return
+            }
+
+            self?.importCarbsFromHealth(completion: completionHandler)
+        }
+
+        healthCarbObserverQuery = query
+        healthKitStore.execute(query)
+        healthKitStore.enableBackgroundDelivery(for: sampleType, frequency: .immediate) { success, error in
+            if let error = error {
+                warning(.service, "Cannot enable background delivery for HealthKit carbs", error: error)
+            } else if success {
+                debug(.service, "HealthKit carb background delivery enabled")
+            }
+        }
+
+        importCarbsFromHealth()
+    }
+
+    private func importCarbsFromHealth(completion: (() -> Void)? = nil) {
+        guard settingsManager.settings.useAppleHealth,
+              Config.healthCarbObject != nil
+        else {
+            completion?()
+            return
+        }
+
+        loadExternalCarbSamplesFromHealth()
+            .receive(on: processQueue)
+            .sink { [weak self] samples in
+                guard let self = self else {
+                    completion?()
+                    return
+                }
+
+                let recentCarbs = self.carbsStorage.recent()
+                let existingIDs = Set(recentCarbs.compactMap(\.id))
+                let existingDates = Set(recentCarbs.map { $0.actualDate ?? $0.createdAt })
+
+                let entries = samples.compactMap { sample -> CarbsEntry? in
+                    let sampleID = "\(CarbsEntry.appleHealth)-\(sample.uuid.uuidString)"
+                    let date = sample.startDate
+                    let carbs = Decimal(sample.quantity.doubleValue(for: .gram()))
+
+                    guard carbs > 0,
+                          !existingIDs.contains(sampleID),
+                          !existingDates.contains(date),
+                          sample.metadata?[Config.freeAPSMetaKey] as? Bool != true
+                    else { return nil }
+
+                    return CarbsEntry(
+                        id: sampleID,
+                        createdAt: date,
+                        actualDate: date,
+                        carbs: carbs,
+                        fat: nil,
+                        protein: nil,
+                        fiber: nil,
+                        note: "Apple Health",
+                        enteredBy: CarbsEntry.appleHealth,
+                        isFPU: false,
+                        micronutrient: nil
+                    )
+                }
+
+                if entries.isNotEmpty {
+                    self.carbsStorage.storeCarbs(entries)
+                    debug(.service, "Imported \(entries.count) carb entries from HealthKit")
+                }
+
+                completion?()
+            }
+            .store(in: &lifetime)
+    }
+
+    private func loadExternalCarbSamplesFromHealth() -> Future<[HKQuantitySample], Never> {
+        Future { promise in
+            guard let sampleType = Config.healthCarbObject else {
+                promise(.success([]))
+                return
+            }
+
+            let startDate = Date().addingTimeInterval(-1.days.timeInterval)
+            let endDate = Date().addingTimeInterval(12.hours.timeInterval)
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: [])
+            let sortDescriptors = [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
+
+            let query = HKSampleQuery(
+                sampleType: sampleType,
+                predicate: predicate,
+                limit: 100,
+                sortDescriptors: sortDescriptors
+            ) { _, results, _ in
+                let samples = (results as? [HKQuantitySample]) ?? []
+                promise(.success(samples))
+            }
+            self.healthKitStore.execute(query)
+        }
     }
 
     /// Try to load samples from Health store
