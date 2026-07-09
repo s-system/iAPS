@@ -2,21 +2,49 @@ import SwiftUI
 import UIKit
 
 enum EsseLineaTheme {
-    // Core palette
-    static let background = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
-    static let surface = Color(red: 21 / 255, green: 21 / 255, blue: 21 / 255)
-    static let surfaceElevated = Color(red: 29 / 255, green: 29 / 255, blue: 31 / 255)
-    static let accent = Color(red: 10 / 255, green: 132 / 255, blue: 255 / 255)
-    static let textPrimary = Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)
-    static let textSecondary = Color(red: 159 / 255, green: 159 / 255, blue: 168 / 255)
-    static let divider = Color.white.opacity(0.10)
+    // Dynamic palette: follows the iPhone's system Light/Dark appearance automatically.
+    static let uiBackground = UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .black : .white
+    }
 
-    // UIKit equivalents for global appearance APIs
-    static let uiBackground = UIColor(red: 10 / 255, green: 10 / 255, blue: 10 / 255, alpha: 1)
-    static let uiSurface = UIColor(red: 21 / 255, green: 21 / 255, blue: 21 / 255, alpha: 1)
+    static let uiSurface = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.07, alpha: 1)
+            : UIColor(white: 0.96, alpha: 1)
+    }
+
+    static let uiSurfaceElevated = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.11, alpha: 1)
+            : UIColor(white: 0.92, alpha: 1)
+    }
+
+    static let uiTextPrimary = UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .white : .black
+    }
+
+    static let uiTextSecondary = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.62, alpha: 1)
+            : UIColor(white: 0.38, alpha: 1)
+    }
+
+    static let uiDivider = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.white.withAlphaComponent(0.12)
+            : UIColor.black.withAlphaComponent(0.10)
+    }
+
     static let uiAccent = UIColor(red: 10 / 255, green: 132 / 255, blue: 255 / 255, alpha: 1)
-    static let uiTextPrimary = UIColor(red: 245 / 255, green: 245 / 255, blue: 247 / 255, alpha: 1)
-    static let uiTextSecondary = UIColor(red: 159 / 255, green: 159 / 255, blue: 168 / 255, alpha: 1)
+
+    // SwiftUI equivalents.
+    static let background = Color(uiColor: uiBackground)
+    static let surface = Color(uiColor: uiSurface)
+    static let surfaceElevated = Color(uiColor: uiSurfaceElevated)
+    static let accent = Color(uiColor: uiAccent)
+    static let textPrimary = Color(uiColor: uiTextPrimary)
+    static let textSecondary = Color(uiColor: uiTextSecondary)
+    static let divider = Color(uiColor: uiDivider)
 }
 
 enum AppearanceManager {
@@ -42,7 +70,7 @@ enum AppearanceManager {
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithOpaqueBackground()
         tabAppearance.backgroundColor = EsseLineaTheme.uiBackground
-        tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+        tabAppearance.shadowColor = EsseLineaTheme.uiDivider
 
         let itemAppearances = [
             tabAppearance.stackedLayoutAppearance,
