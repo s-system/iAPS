@@ -31,14 +31,25 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
     private enum Config {
         // unwraped HKObjects
         static var readPermissions: Set<HKSampleType> {
-            Set([healthBGObject, healthCarbObject].compactMap { $0 }) }
+            Set([
+                healthBGObject,
+                healthCarbObject,
+                healthProteinObject,
+                healthFatObject,
+                healthFiberObject
+            ].compactMap { $0 })
+        }
 
         static var writePermissions: Set<HKSampleType> {
-            Set([healthBGObject, healthCarbObject, healthInsulinObject].compactMap { $0 }) }
+            Set([healthBGObject, healthCarbObject, healthInsulinObject].compactMap { $0 })
+        }
 
         // link to object in HealthKit
         static let healthBGObject = HKObjectType.quantityType(forIdentifier: .bloodGlucose)
         static let healthCarbObject = HKObjectType.quantityType(forIdentifier: .dietaryCarbohydrates)
+        static let healthProteinObject = HKObjectType.quantityType(forIdentifier: .dietaryProtein)
+        static let healthFatObject = HKObjectType.quantityType(forIdentifier: .dietaryFatTotal)
+        static let healthFiberObject = HKObjectType.quantityType(forIdentifier: .dietaryFiber)
         static let healthInsulinObject = HKObjectType.quantityType(forIdentifier: .insulinDelivery)
 
         // Meta-data key of iAPS data in HealthStore
@@ -346,7 +357,9 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
                 return
             }
 
-            self?.importCarbsFromHealth(completion: completionHandler)
+            self?.processQueue.asyncAfter(deadline: .now() + 2) {
+                self?.importCarbsFromHealth(completion: completionHandler)
+            }
         }
 
         healthCarbObserverQuery = query
@@ -370,9 +383,9 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
             return
         }
 
-        loadExternalCarbSamplesFromHealth()
+        loadExternalNutritionSamplesFromHealth()
             .receive(on: processQueue)
-            .sink { [weak self] samples in
+            .sink { [weak self] nutrition in
                 guard let self = self else {
                     completion?()
                     return
@@ -382,7 +395,7 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
                 let existingIDs = Set(recentCarbs.compactMap(\.id))
                 let existingDates = Set(recentCarbs.map { $0.actualDate ?? $0.createdAt })
 
-                let entries = samples.compactMap { sample -> CarbsEntry? in
+                let entries = nutrition.carbs.compactMap { sample -> CarbsEntry? in
                     let sampleID = "\(CarbsEntry.appleHealth)-\(sample.uuid.uuidString)"
                     let date = sample.startDate
                     let carbs = Decimal(sample.quantity.doubleValue(for: .gram()))
@@ -398,9 +411,9 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
                         createdAt: date,
                         actualDate: date,
                         carbs: carbs,
-                        fat: nil,
-                        protein: nil,
-                        fiber: nil,
+                        fat: self.matchingNutritionValue(in: nutrition.fats, for: sample),
+                        protein: self.matchingNutritionValue(in: nutrition.proteins, for: sample),
+                        fiber: self.matchingNutritionValue(in: nutrition.fibers, for: sample),
                         note: "Apple Health",
                         enteredBy: CarbsEntry.appleHealth,
                         isFPU: false,
@@ -410,7 +423,7 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
 
                 if entries.isNotEmpty {
                     self.carbsStorage.storeCarbs(entries)
-                    debug(.service, "Imported \(entries.count) carb entries from HealthKit")
+                    debug(.service, "Imported \(entries.count) nutrition entries from HealthKit")
                 }
 
                 completion?()
@@ -418,10 +431,33 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
             .store(in: &lifetime)
     }
 
-    private func loadExternalCarbSamplesFromHealth() -> Future<[HKQuantitySample], Never> {
+    private func matchingNutritionValue(
+        in samples: [HKQuantitySample],
+        for carbSample: HKQuantitySample
+    ) -> Decimal? {
+        let sourceIdentifier = carbSample.sourceRevision.source.bundleIdentifier
+        let matchingWindow: TimeInterval = 60
+
+        return samples
+            .filter {
+                $0.sourceRevision.source.bundleIdentifier == sourceIdentifier &&
+                    abs($0.startDate.timeIntervalSince(carbSample.startDate)) <= matchingWindow
+            }
+            .min {
+                abs($0.startDate.timeIntervalSince(carbSample.startDate)) <
+                    abs($1.startDate.timeIntervalSince(carbSample.startDate))
+            }
+            .map { Decimal($0.quantity.doubleValue(for: .gram())) }
+    }
+
+    private func loadExternalNutritionSamplesFromHealth() -> Future<HealthKitNutritionSamples, Never> {
         Future { promise in
-            guard let sampleType = Config.healthCarbObject else {
-                promise(.success([]))
+            guard let carbType = Config.healthCarbObject,
+                  let proteinType = Config.healthProteinObject,
+                  let fatType = Config.healthFatObject,
+                  let fiberType = Config.healthFiberObject
+            else {
+                promise(.success(HealthKitNutritionSamples()))
                 return
             }
 
@@ -429,17 +465,35 @@ final class BaseHealthKitManager: HealthKitManager, Injectable {
             let endDate = Date().addingTimeInterval(12.hours.timeInterval)
             let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: [])
             let sortDescriptors = [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
+            let group = DispatchGroup()
+            let lock = NSLock()
+            var result = HealthKitNutritionSamples()
 
-            let query = HKSampleQuery(
-                sampleType: sampleType,
-                predicate: predicate,
-                limit: 100,
-                sortDescriptors: sortDescriptors
-            ) { _, results, _ in
-                let samples = (results as? [HKQuantitySample]) ?? []
-                promise(.success(samples))
+            func load(_ sampleType: HKQuantityType, assign: @escaping ([HKQuantitySample]) -> Void) {
+                group.enter()
+                let query = HKSampleQuery(
+                    sampleType: sampleType,
+                    predicate: predicate,
+                    limit: 100,
+                    sortDescriptors: sortDescriptors
+                ) { _, results, _ in
+                    let samples = (results as? [HKQuantitySample]) ?? []
+                    lock.lock()
+                    assign(samples)
+                    lock.unlock()
+                    group.leave()
+                }
+                self.healthKitStore.execute(query)
             }
-            self.healthKitStore.execute(query)
+
+            load(carbType) { result.carbs = $0 }
+            load(proteinType) { result.proteins = $0 }
+            load(fatType) { result.fats = $0 }
+            load(fiberType) { result.fibers = $0 }
+
+            group.notify(queue: self.processQueue) {
+                promise(.success(result))
+            }
         }
     }
 
@@ -589,6 +643,13 @@ enum HKError: Error {
     case notAvailableOnCurrentDevice
     // Some data can be not available on current iOS-device
     case dataNotAvailable
+}
+
+private struct HealthKitNutritionSamples {
+    var carbs: [HKQuantitySample] = []
+    var proteins: [HKQuantitySample] = []
+    var fats: [HKQuantitySample] = []
+    var fibers: [HKQuantitySample] = []
 }
 
 private struct InsulinBolus {
