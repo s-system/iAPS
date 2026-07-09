@@ -29,11 +29,11 @@ extension UIColor {
 public extension UIColor {
     @nonobjc static let agingColor = warning
 
-    @nonobjc static let axisLabelColor = secondaryLabel
+    @nonobjc static let axisLabelColor = EsseLineaTheme.uiTextSecondary
 
     @nonobjc static let axisLineColor = clear
 
-    @nonobjc static let cellBackgroundColor = secondarySystemBackground
+    @nonobjc static let cellBackgroundColor = EsseLineaTheme.uiSurface
 
     @nonobjc static let carbTintColor = carbs
 
