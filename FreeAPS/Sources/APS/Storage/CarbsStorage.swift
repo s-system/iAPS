@@ -160,10 +160,18 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
     func nightscoutTretmentsNotUploaded() -> [NigtscoutTreatment] {
         let uploaded = storage.retrieve(OpenAPS.Nightscout.uploadedCarbs, as: [NigtscoutTreatment].self) ?? []
 
+        let uploadableSources = [
+            CarbsEntry.manual,
+            CarbsEntry.remote,
+            CarbsEntry.shortcut,
+            CarbsEntry.appleHealth
+        ]
+
         let eventsManual = recent()
             .filter {
-                ($0.enteredBy == CarbsEntry.manual || $0.enteredBy == CarbsEntry.remote || $0.enteredBy == CarbsEntry.shortcut) &&
-                    $0.carbs > 0 }
+                uploadableSources.contains($0.enteredBy ?? "") &&
+                    $0.carbs > 0
+            }
         let treatments = eventsManual.map {
             NigtscoutTreatment(
                 duration: nil,
@@ -177,8 +185,8 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
                 bolus: nil,
                 insulin: nil,
                 carbs: $0.carbs,
-                fat: nil,
-                protein: nil,
+                fat: $0.fat,
+                protein: $0.protein,
                 foodType: $0.note,
                 targetTop: nil,
                 targetBottom: nil,
