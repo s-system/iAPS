@@ -26,6 +26,9 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
 
     func storeCarbs(_ entries: [CarbsEntry]) {
         processQueue.sync {
+            let entries = deduplicateAppleHealthEntries(entries)
+            guard entries.isNotEmpty else { return }
+
             let file = OpenAPS.Monitor.carbHistory
             var uniqEvents: [CarbsEntry] = []
 
@@ -136,6 +139,37 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
                 $0.carbsDidUpdate(uniqEvents)
             }
         }
+    }
+
+    private func deduplicateAppleHealthEntries(_ entries: [CarbsEntry]) -> [CarbsEntry] {
+        let duplicateWindow: TimeInterval = 5
+        let existingAppleHealthEntries = recent().filter { $0.enteredBy == CarbsEntry.appleHealth }
+        var accepted: [CarbsEntry] = []
+
+        for entry in entries {
+            guard entry.enteredBy == CarbsEntry.appleHealth else {
+                accepted.append(entry)
+                continue
+            }
+
+            let entryDate = entry.actualDate ?? entry.createdAt
+            let candidates = existingAppleHealthEntries + accepted.filter { $0.enteredBy == CarbsEntry.appleHealth }
+
+            let isDuplicate = candidates.contains { candidate in
+                let candidateDate = candidate.actualDate ?? candidate.createdAt
+                return abs(candidateDate.timeIntervalSince(entryDate)) <= duplicateWindow &&
+                    candidate.carbs == entry.carbs &&
+                    candidate.fat == entry.fat &&
+                    candidate.protein == entry.protein &&
+                    candidate.fiber == entry.fiber
+            }
+
+            if !isDuplicate {
+                accepted.append(entry)
+            }
+        }
+
+        return accepted
     }
 
     func syncDate() -> Date {
