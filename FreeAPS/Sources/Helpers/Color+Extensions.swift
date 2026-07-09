@@ -49,6 +49,8 @@ extension Color {
     static let uam = Color("UAM")
     static let zt = Color("ZT")
     static let blueComplicationBackground = Color(red: 0.1176470588, green: 0.2352941176, blue: 0.3725490196)
-    static let homeBackground = Color("HomeBackground")
-    static let darkChartBackground = Color("DarkChartBackground")
+
+    // EsseLinea Home surfaces follow iOS Light/Dark appearance automatically.
+    static let homeBackground = EsseLineaTheme.background
+    static let darkChartBackground = EsseLineaTheme.background
 }
