@@ -26,7 +26,7 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
 
     func storeCarbs(_ entries: [CarbsEntry]) {
         processQueue.sync {
-            let entries = deduplicateAppleHealthEntries(entries)
+            let entries = deduplicateImportedEntries(entries)
             guard entries.isNotEmpty else { return }
 
             let file = OpenAPS.Monitor.carbHistory
@@ -141,27 +141,50 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
         }
     }
 
-    private func deduplicateAppleHealthEntries(_ entries: [CarbsEntry]) -> [CarbsEntry] {
-        let duplicateWindow: TimeInterval = 5
-        let existingAppleHealthEntries = recent().filter { $0.enteredBy == CarbsEntry.appleHealth }
+    private func deduplicateImportedEntries(_ entries: [CarbsEntry]) -> [CarbsEntry] {
+        let appleHealthWindow: TimeInterval = 5
+        let nightscoutRoundTripWindow: TimeInterval = 2
+        let existingEntries = recent()
         var accepted: [CarbsEntry] = []
 
+        func isImportedSource(_ source: String?) -> Bool {
+            source == CarbsEntry.appleHealth || source == CarbsEntry.remote
+        }
+
         for entry in entries {
-            guard entry.enteredBy == CarbsEntry.appleHealth else {
+            guard isImportedSource(entry.enteredBy) else {
                 accepted.append(entry)
                 continue
             }
 
             let entryDate = entry.actualDate ?? entry.createdAt
-            let candidates = existingAppleHealthEntries + accepted.filter { $0.enteredBy == CarbsEntry.appleHealth }
+            let candidates = existingEntries + accepted
 
             let isDuplicate = candidates.contains { candidate in
+                guard isImportedSource(candidate.enteredBy) else { return false }
+
+                if let entryID = entry.id,
+                   let candidateID = candidate.id,
+                   entryID == candidateID {
+                    return true
+                }
+
                 let candidateDate = candidate.actualDate ?? candidate.createdAt
-                return abs(candidateDate.timeIntervalSince(entryDate)) <= duplicateWindow &&
+                let timeDifference = abs(candidateDate.timeIntervalSince(entryDate))
+
+                let sameAppleHealthPayload = entry.enteredBy == CarbsEntry.appleHealth &&
+                    candidate.enteredBy == CarbsEntry.appleHealth &&
+                    timeDifference <= appleHealthWindow &&
                     candidate.carbs == entry.carbs &&
                     candidate.fat == entry.fat &&
                     candidate.protein == entry.protein &&
                     candidate.fiber == entry.fiber
+
+                let isNightscoutRoundTrip = entry.enteredBy != candidate.enteredBy &&
+                    timeDifference <= nightscoutRoundTripWindow &&
+                    candidate.carbs == entry.carbs
+
+                return sameAppleHealthPayload || isNightscoutRoundTrip
             }
 
             if !isDuplicate {
