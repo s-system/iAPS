@@ -142,8 +142,7 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
     }
 
     private func deduplicateImportedEntries(_ entries: [CarbsEntry]) -> [CarbsEntry] {
-        let appleHealthWindow: TimeInterval = 5
-        let nightscoutRoundTripWindow: TimeInterval = 2
+        let duplicateWindow: TimeInterval = 2
         let existingEntries = recent()
         var accepted: [CarbsEntry] = []
 
@@ -172,19 +171,10 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
                 let candidateDate = candidate.actualDate ?? candidate.createdAt
                 let timeDifference = abs(candidateDate.timeIntervalSince(entryDate))
 
-                let sameAppleHealthPayload = entry.enteredBy == CarbsEntry.appleHealth &&
-                    candidate.enteredBy == CarbsEntry.appleHealth &&
-                    timeDifference <= appleHealthWindow &&
-                    candidate.carbs == entry.carbs &&
-                    candidate.fat == entry.fat &&
-                    candidate.protein == entry.protein &&
-                    candidate.fiber == entry.fiber
-
-                let isNightscoutRoundTrip = entry.enteredBy != candidate.enteredBy &&
-                    timeDifference <= nightscoutRoundTripWindow &&
-                    candidate.carbs == entry.carbs
-
-                return sameAppleHealthPayload || isNightscoutRoundTrip
+                // HealthKit/Nightscout can preserve the exact carb timestamp and amount
+                // while dropping or changing fat, protein, fiber, note and actualDate.
+                // Treat the same imported carb event as one entry regardless of those fields.
+                return timeDifference <= duplicateWindow && candidate.carbs == entry.carbs
             }
 
             if !isDuplicate {
