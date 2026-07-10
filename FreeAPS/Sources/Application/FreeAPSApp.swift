@@ -110,6 +110,7 @@ private final class HealthKitMacroOnlyImporter {
     private var observerQueries: [HKObserverQuery] = []
 
     private let matchingWindow: TimeInterval = 5
+    private let carbMatchingWindow: TimeInterval = 60
 
     init(resolver: Resolver) {
         healthStore = resolver.resolve(HKHealthStore.self)!
@@ -162,6 +163,7 @@ private final class HealthKitMacroOnlyImporter {
 
     private func importMacroMeals(completion: (() -> Void)? = nil) {
         guard settingsManager.settings.useAppleHealth,
+              let carbType = HKObjectType.quantityType(forIdentifier: .dietaryCarbohydrates),
               let proteinType = HKObjectType.quantityType(forIdentifier: .dietaryProtein),
               let fatType = HKObjectType.quantityType(forIdentifier: .dietaryFatTotal),
               let fiberType = HKObjectType.quantityType(forIdentifier: .dietaryFiber)
@@ -176,6 +178,7 @@ private final class HealthKitMacroOnlyImporter {
         let group = DispatchGroup()
         let lock = NSLock()
 
+        var carbs: [HKQuantitySample] = []
         var proteins: [HKQuantitySample] = []
         var fats: [HKQuantitySample] = []
         var fibers: [HKQuantitySample] = []
@@ -189,7 +192,7 @@ private final class HealthKitMacroOnlyImporter {
                 sortDescriptors: sortDescriptors
             ) { _, results, error in
                 if let error {
-                    warning(.service, "Cannot load HealthKit macro samples", error: error)
+                    warning(.service, "Cannot load HealthKit nutrition samples", error: error)
                 }
 
                 lock.lock()
@@ -200,6 +203,7 @@ private final class HealthKitMacroOnlyImporter {
             healthStore.execute(query)
         }
 
+        load(carbType) { carbs = $0 }
         load(proteinType) { proteins = $0 }
         load(fatType) { fats = $0 }
         load(fiberType) { fibers = $0 }
@@ -253,6 +257,24 @@ private final class HealthKitMacroOnlyImporter {
             let entries = macroGroups.compactMap { macroGroup -> CarbsEntry? in
                 guard macroGroup.protein > 0 || macroGroup.fat > 0 || macroGroup.fiber > 0 else { return nil }
 
+                // A positive carb sample from the same HealthKit source means the normal
+                // HealthKit importer already owns this meal. Do not create a second Meal entry.
+                let hasMatchingCarbSample = carbs.contains { carbSample in
+                    carbSample.sourceRevision.source.bundleIdentifier == macroGroup.sourceIdentifier &&
+                        carbSample.quantity.doubleValue(for: .gram()) > 0 &&
+                        abs(carbSample.startDate.timeIntervalSince(macroGroup.date)) <= self.carbMatchingWindow
+                }
+
+                // Also protect against timing/order races where the carb entry is already stored
+                // before this macro observer finishes its own query.
+                let hasMatchingStoredCarb = recentEntries.contains { entry in
+                    guard entry.enteredBy == CarbsEntry.appleHealth, entry.carbs > 0 else { return false }
+                    let entryDate = entry.actualDate ?? entry.createdAt
+                    return abs(entryDate.timeIntervalSince(macroGroup.date)) <= self.carbMatchingWindow
+                }
+
+                guard !hasMatchingCarbSample, !hasMatchingStoredCarb else { return nil }
+
                 let isDuplicate = recentEntries.contains { entry in
                     guard entry.enteredBy == CarbsEntry.appleHealth else { return false }
                     let entryDate = entry.actualDate ?? entry.createdAt
@@ -286,7 +308,7 @@ private final class HealthKitMacroOnlyImporter {
             entries.forEach { self.carbsStorage.storeCarbs([$0]) }
 
             if entries.isNotEmpty {
-                debug(.service, "Imported \(entries.count) macro meals from HealthKit")
+                debug(.service, "Imported \(entries.count) macro-only meals from HealthKit")
             }
 
             completion?()
