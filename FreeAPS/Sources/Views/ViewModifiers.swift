@@ -13,7 +13,6 @@ struct RoundedBackground: ViewModifier {
             .padding()
             .background(
                 Rectangle()
-                    // RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill()
                     .foregroundColor(color)
             )
@@ -44,14 +43,12 @@ struct ActiveOverride: ViewModifier {
         content
             .overlay {
                 override ?
-
                     Image(systemName: "person.2.fill")
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(Color.purple.opacity(0.3), Color.green.opacity(0.3))
                     .font(.system(size: 10))
                     .offset(x: 20)
                     .frame(maxHeight: .infinity, alignment: .leading)
-
                     : nil
             }
     }
@@ -112,28 +109,22 @@ struct TestTube: View {
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        UnevenRoundedRectangle.testTube
-            .fill(
-                LinearGradient(
-                    gradient: Gradient(stops: [
-                        Gradient.Stop(color: .white.opacity(opacity), location: amount),
-                        Gradient.Stop(color: colourOfSubstance, location: amount)
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay {
-                FrostedGlass(opacity: materialOpacity)
+        GeometryReader { geometry in
+            let fillHeight = max(geometry.size.height * (1 - amount), 3)
+
+            ZStack(alignment: .bottom) {
+                Capsule(style: .continuous)
+                    .fill(EsseLineaTheme.surface)
+
+                Capsule(style: .continuous)
+                    .fill(colourOfSubstance)
+                    .frame(height: fillHeight)
             }
-            .shadow(
-                color: Color.black
-                    .opacity(
-                        colorScheme == .dark ? IAPSconfig.glassShadowOpacity : IAPSconfig.glassShadowOpacity / IAPSconfig
-                            .shadowFraction
-                    ),
-                radius: colorScheme == .dark ? 2.2 : 3
-            )
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(EsseLineaTheme.divider, lineWidth: 1)
+            }
+        }
     }
 }
 
@@ -190,7 +181,7 @@ struct Sage: View {
         let fill = max(expiration / amount, 0.15)
         let colour: Color = (expiration < 0.5 * 8.64E4) ? .red
             .opacity(0.9) : (expiration < 2 * 8.64E4) ? .orange.opacity(0.8) : colorScheme == .light ? Color.white : Color
-            .black // Color.white
+            .black
             .opacity(0.9)
         let scheme = colorScheme == .light ? Color(.systemGray5) : Color(.systemGray2)
 
@@ -206,7 +197,7 @@ struct Sage: View {
                                     location: fill
                                 ),
                                 Gradient.Stop(
-                                    color: colorScheme == .light ? Color.white : Color.black, // Color.white.opacity(0.9),
+                                    color: colorScheme == .light ? Color.white : Color.black,
                                     location: fill
                                 )
                             ]),
