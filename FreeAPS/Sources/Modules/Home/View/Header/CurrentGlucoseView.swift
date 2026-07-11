@@ -128,16 +128,16 @@ struct CurrentGlucoseView: View {
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(EsseLineaTheme.textPrimary)
         }
+        .frame(minWidth: 66, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(EsseLineaTheme.surface)
+            headerBadgeShape.fill(EsseLineaTheme.surface)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(EsseLineaTheme.divider, lineWidth: 1)
+            headerBadgeShape.stroke(EsseLineaTheme.divider, lineWidth: 1)
         }
+        .shadow(color: badgeShadow, radius: 5, y: 2)
     }
 
     private var sensorBadge: some View {
@@ -161,6 +161,7 @@ struct CurrentGlucoseView: View {
                         .font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(isUrgent ? Color.red : isWarning ? Color.orange : EsseLineaTheme.textPrimary)
+                .frame(minWidth: 64)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
                 .background {
@@ -169,10 +170,23 @@ struct CurrentGlucoseView: View {
                 }
                 .overlay {
                     Capsule(style: .continuous)
-                        .stroke(isUrgent ? Color.red.opacity(0.8) : isWarning ? Color.orange.opacity(0.8) : EsseLineaTheme.divider, lineWidth: 1.2)
+                        .stroke(
+                            isUrgent ? Color.red.opacity(0.8) :
+                                isWarning ? Color.orange.opacity(0.8) : EsseLineaTheme.divider,
+                            lineWidth: 1.2
+                        )
                 }
+                .shadow(color: badgeShadow, radius: 5, y: 2)
             }
         }
+    }
+
+    private var headerBadgeShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+    }
+
+    private var badgeShadow: Color {
+        colorScheme == .dark ? Color.black.opacity(0.35) : Color.black.opacity(0.10)
     }
 
     private var trendSymbol: String {
