@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+enum EsseLineaLayout {
+    static let screenMargin: CGFloat = 4
+    static let contentSpacing: CGFloat = 16
+    static let cardCornerRadius: CGFloat = 22
+}
+
 enum EsseLineaTheme {
     // Dynamic palette: follows the iPhone's system Light/Dark appearance automatically.
     static let uiBackground = UIColor { traits in
@@ -49,6 +55,10 @@ enum EsseLineaTheme {
 
 enum AppearanceManager {
     static func setupGlobalAppearance() {
+        UIWindow.appearance().backgroundColor = EsseLineaTheme.uiBackground
+        UIScrollView.appearance().backgroundColor = .clear
+        UICollectionView.appearance().backgroundColor = .clear
+
         UITableView.appearance().separatorStyle = .none
         UITableView.appearance().backgroundColor = .clear
         UITableViewHeaderFooterView.appearance().tintColor = .clear
