@@ -44,9 +44,7 @@ struct PumpView: View {
 
     var body: some View {
         let nano = state.pumpName.contains("Medtrum")
-        // let sim = state.pumpName.contains("Simulator") // Just For Testing
         HStack(spacing: 5) {
-            // OmniPods and Medtrum nanos
             if let pumpManager = state.deviceDataManager.pumpManager,
                !pumpManager.isOnboarded
             {
@@ -54,9 +52,7 @@ struct PumpView: View {
                     .offset(y: -4)
             } else {
                 if let date = expiresAtDate {
-                    // Insulin amount (U)
                     if let insulin = reservoir {
-                        // 120 % due to being non rectangular. +10 because of bottom inserter.
                         let amountFraction = 1.0 - (Double(insulin + 10) * 1.2 / 200)
                         if insulin == 0xDEAD_BEEF {
                             if nano {
@@ -69,8 +65,7 @@ struct PumpView: View {
                                             ClockOffset(mdtPump: false)
                                         }
                                         if (concentration.last?.concentration ?? 1) != 1,
-                                           !state.settingsManager.settings
-                                           .hideInsulinBadge
+                                           !state.settingsManager.settings.hideInsulinBadge
                                         {
                                             NonStandardInsulin(
                                                 concentration: concentration.last?.concentration ?? 1,
@@ -88,8 +83,7 @@ struct PumpView: View {
                                             ClockOffset(mdtPump: false)
                                         }
                                         if (concentration.last?.concentration ?? 1) != 1,
-                                           !state.settingsManager.settings
-                                           .hideInsulinBadge
+                                           !state.settingsManager.settings.hideInsulinBadge
                                         {
                                             NonStandardInsulin(concentration: concentration.last?.concentration ?? 1, pump: .pod)
                                         }
@@ -97,7 +91,7 @@ struct PumpView: View {
                             }
                         } else {
                             HStack(spacing: 0) {
-                                let amount: Decimal = (insulin * Decimal(concentration.last?.concentration ?? 1))
+                                let amount: Decimal = insulin * Decimal(concentration.last?.concentration ?? 1)
                                 Text(reservoirFormatter.string(from: amount as NSNumber) ?? "")
                                     .padding(.trailing, 2)
                                 Text("U").foregroundStyle(.secondary)
@@ -147,10 +141,10 @@ struct PumpView: View {
                 } else if nano {
                     Text("No Patch").font(.statusFont).foregroundStyle(.secondary)
                         .offset(y: -4)
-                }
-                // Other pumps
-                else if let reservoir = reservoir {
-                    if (concentration.last?.concentration ?? 1) != 1, !state.settingsManager.settings.hideInsulinBadge {
+                } else if let reservoir = reservoir {
+                    if (concentration.last?.concentration ?? 1) != 1,
+                       !state.settingsManager.settings.hideInsulinBadge
+                    {
                         NonStandardInsulin(concentration: concentration.last?.concentration ?? 1, pump: .other)
                     }
                     let amountFraction = 1.0 - (Double(reservoir + 10) * 1.2 / 200)
@@ -159,7 +153,9 @@ struct PumpView: View {
                         pumpInsulinAmount(portion: amountFraction)
                             .padding(.leading, (concentration.last?.concentration ?? 1) != 1 ? 7 : 0)
                             .overlay {
-                                if let timeZone = timeZone, timeZone.secondsFromGMT() != TimeZone.current.secondsFromGMT() {
+                                if let timeZone = timeZone,
+                                   timeZone.secondsFromGMT() != TimeZone.current.secondsFromGMT()
+                                {
                                     ClockOffset(mdtPump: true)
                                 }
                             }.offset(y: expiresAtDate == nil ? -4 : 0)
@@ -175,7 +171,9 @@ struct PumpView: View {
                         pumpInsulinAmount(portion: amountFraction)
                             .padding(.leading, (concentration.last?.concentration ?? 1) != 1 ? 7 : 0)
                             .overlay {
-                                if let timeZone = timeZone, timeZone.secondsFromGMT() != TimeZone.current.secondsFromGMT() {
+                                if let timeZone = timeZone,
+                                   timeZone.secondsFromGMT() != TimeZone.current.secondsFromGMT()
+                                {
                                     ClockOffset(mdtPump: false)
                                 }
                             }
@@ -185,7 +183,6 @@ struct PumpView: View {
                         .offset(y: -4)
                 }
 
-                // MDT and Dana
                 if let battery = battery, !state.pumpName.contains("Omni"), !nano {
                     let percent = (battery.percent ?? 100) > 80 ? 100 : (battery.percent ?? 100) < 81 &&
                         (battery.percent ?? 100) >
@@ -199,6 +196,17 @@ struct PumpView: View {
                 }
             }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(EsseLineaTheme.surface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(EsseLineaTheme.divider, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 3, y: 1)
         .offset(x: (nano && expiresAtDate != nil) ? 5 : 0, y: (nano && expiresAtDate != nil) ? 10 : 5)
     }
 
@@ -217,7 +225,6 @@ struct PumpView: View {
                         if adjustedHours >= 0 {
                             Text(" ")
                             Text("\(adjustedHours)")
-                            // spacer
                             Text(NSLocalizedString("h", comment: "abbreviation for days")).foregroundStyle(.secondary)
                         }
                     }
@@ -296,7 +303,6 @@ struct PumpView: View {
                 .frame(width: IAPSconfig.iconSize, height: IAPSconfig.iconSize)
                 .symbolRenderingMode(.palette)
                 .offset(x: 0, y: -5)
-                .shadow(radius: 1, x: 2, y: 2)
                 .foregroundStyle(.white)
                 .overlay {
                     let units = 50 * (concentration.last?.concentration ?? 1)
@@ -317,7 +323,6 @@ struct PumpView: View {
                 .resizable()
                 .frame(maxWidth: 17, maxHeight: 36)
                 .symbolRenderingMode(.palette)
-                .shadow(radius: 1, x: 2, y: 2)
                 .foregroundStyle(.white)
                 .padding(.bottom, 5)
         }
@@ -331,7 +336,6 @@ struct PumpView: View {
                 .aspectRatio(0.7, contentMode: .fit)
                 .frame(height: IAPSconfig.iconSize)
                 .symbolRenderingMode(.palette)
-                .shadow(radius: 1, x: 2, y: 2)
                 .foregroundStyle(.white)
                 .padding(5)
                 .offset(y: -5)
