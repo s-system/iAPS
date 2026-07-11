@@ -25,42 +25,56 @@ struct LoopView: View {
     @Environment(\.sizeCategory) private var fontSize
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             let multiplyForLargeFonts = fontSize > .extraLarge ? 1.1 : 1
 
             HStack(spacing: 0) {
                 Text("i").font(.system(size: 10, design: .rounded)).offset(y: 0.35)
                 Text("APS").font(.system(size: 12, design: .rounded))
             }
-            .foregroundStyle(.secondary.opacity(0.7))
-            .carvingOrRelief(carve: colorScheme == .light)
+            .foregroundStyle(EsseLineaTheme.textSecondary)
 
-            LoopEllipse(stroke: color)
-                .frame(width: minutesAgo > 9 ? 50 * multiplyForLargeFonts : 50 * multiplyForLargeFonts, height: 27)
+            Capsule(style: .continuous)
+                .fill(EsseLineaTheme.background)
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(color.opacity(0.9), lineWidth: 1.8)
+                }
+                .frame(width: 54 * multiplyForLargeFonts, height: 30)
                 .overlay {
                     HStack {
                         ZStack {
                             if closedLoop {
                                 if !isLooping, actualSuggestion?.timestamp != nil {
                                     if minutesAgo > 999 {
-                                        Text("--").font(.caption).padding(.leading, 5).foregroundColor(.secondary)
+                                        Text("--")
+                                            .font(.caption)
+                                            .foregroundStyle(EsseLineaTheme.textSecondary)
                                     } else {
                                         let timeString = NSLocalizedString("m", comment: "Minutes ago since last loop")
-                                        HStack(spacing: 0) {
-                                            Text("\(minutesAgo) ")
-                                            Text(timeString).foregroundColor(.secondary)
-                                        }.font(.caption)
+                                        HStack(spacing: 2) {
+                                            Text("\(minutesAgo)")
+                                                .foregroundStyle(EsseLineaTheme.textPrimary)
+                                            Text(timeString)
+                                                .foregroundStyle(EsseLineaTheme.textSecondary)
+                                        }
+                                        .font(.caption.weight(.medium))
                                     }
                                 }
                                 if isLooping {
                                     ProgressView()
+                                        .controlSize(.small)
                                 }
                             } else if !isLooping {
-                                Text("Open").font(.caption)
+                                Text("Open")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(EsseLineaTheme.textPrimary)
                             }
                         }
-                    }.dynamicTypeSize(...DynamicTypeSize.xLarge)
+                    }
+                    .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 }
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 3, y: 1)
         }
     }
 
