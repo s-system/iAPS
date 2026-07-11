@@ -63,7 +63,7 @@ struct CurrentGlucoseView: View {
 
                 if !scrolling, displayDelta, let delta {
                     deltaBadge(delta)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .centerTrailing)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                         .padding(.trailing, 54)
                 }
 
