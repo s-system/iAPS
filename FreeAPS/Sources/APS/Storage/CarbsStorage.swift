@@ -142,13 +142,20 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
     }
 
     private func deduplicateImportedEntries(_ entries: [CarbsEntry]) -> [CarbsEntry] {
-        let appleHealthWindow: TimeInterval = 5
+        let appleHealthFingerprintWindow: TimeInterval = 1
         let nightscoutRoundTripWindow: TimeInterval = 2
+        let valueTolerance = 0.0001
         let existingEntries = recent()
         var accepted: [CarbsEntry] = []
 
         func isImportedSource(_ source: String?) -> Bool {
             source == CarbsEntry.appleHealth || source == CarbsEntry.remote
+        }
+
+        func approximatelyEqual(_ lhs: Decimal?, _ rhs: Decimal?) -> Bool {
+            let left = Double(lhs ?? 0)
+            let right = Double(rhs ?? 0)
+            return abs(left - right) <= valueTolerance
         }
 
         for entry in entries {
@@ -172,19 +179,22 @@ final class BaseCarbsStorage: CarbsStorage, Injectable {
                 let candidateDate = candidate.actualDate ?? candidate.createdAt
                 let timeDifference = abs(candidateDate.timeIntervalSince(entryDate))
 
-                let sameAppleHealthPayload = entry.enteredBy == CarbsEntry.appleHealth &&
+                // HealthKit can return the same nutrition event with a different identifier.
+                // Treat timestamp + carbs + fat + protein as the stable business fingerprint.
+                // Fiber and notes are intentionally ignored because they can disappear in sync.
+                let sameAppleHealthFingerprint = entry.enteredBy == CarbsEntry.appleHealth &&
                     candidate.enteredBy == CarbsEntry.appleHealth &&
-                    timeDifference <= appleHealthWindow &&
-                    candidate.carbs == entry.carbs &&
-                    candidate.fat == entry.fat &&
-                    candidate.protein == entry.protein &&
-                    candidate.fiber == entry.fiber
+                    timeDifference <= appleHealthFingerprintWindow &&
+                    approximatelyEqual(candidate.carbs, entry.carbs) &&
+                    approximatelyEqual(candidate.fat, entry.fat) &&
+                    approximatelyEqual(candidate.protein, entry.protein)
 
+                // Preserve the broader protection against a HealthKit event returning from Nightscout.
                 let isNightscoutRoundTrip = entry.enteredBy != candidate.enteredBy &&
                     timeDifference <= nightscoutRoundTripWindow &&
-                    candidate.carbs == entry.carbs
+                    approximatelyEqual(candidate.carbs, entry.carbs)
 
-                return sameAppleHealthPayload || isNightscoutRoundTrip
+                return sameAppleHealthFingerprint || isNightscoutRoundTrip
             }
 
             if !isDuplicate {
