@@ -42,6 +42,11 @@ struct CurrentGlucoseView: View {
         return formatter
     }
 
+    private var decimalString: String {
+        let formatter = NumberFormatter()
+        return formatter.decimalSeparator
+    }
+
     private var deltaFormatter: NumberFormatter {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -49,15 +54,22 @@ struct CurrentGlucoseView: View {
             formatter.decimalSeparator = "."
         }
         formatter.maximumFractionDigits = 1
-        formatter.positivePrefix = "+"
+        formatter.positivePrefix = "+ "
+        formatter.negativePrefix = "- "
         return formatter
     }
 
-    private var timeAgoFormatter: NumberFormatter {
+    private var timaAgoFormatter: NumberFormatter {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
         formatter.negativePrefix = ""
+        return formatter
+    }
+
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
         return formatter
     }
 
@@ -76,213 +88,174 @@ struct CurrentGlucoseView: View {
     }
 
     var body: some View {
-        Group {
-            if scrolling {
-                compactGlucoseView
-            } else {
-                modernGlucoseCard
-            }
-        }
-        .dynamicTypeSize(DynamicTypeSize.medium ... DynamicTypeSize.xLarge)
+        glucoseView
+            .dynamicTypeSize(DynamicTypeSize.medium ... DynamicTypeSize.xLarge)
     }
 
-    private var modernGlucoseCard: some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(EsseLineaTheme.surface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .stroke(EsseLineaTheme.divider, lineWidth: 1)
+    var glucoseView: some View {
+        ZStack {
+            if let recent = recentGlucose {
+                if displayDelta, !scrolling, let deltaInt = delta,
+                   !(units == .mmolL && abs(deltaInt) <= 1) { deltaView(deltaInt) }
+                if displayExpiration || displaySAGE {
+                    sageView
                 }
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.10), radius: 14, y: 6)
-
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("GLUCOSE")
-                        .font(.caption2.weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(EsseLineaTheme.textSecondary)
-
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(glucoseString)
-                            .font(.system(size: 58, weight: .semibold, design: .rounded))
-                            .minimumScaleFactor(0.72)
-                            .foregroundStyle(glucoseColor)
+                VStack(spacing: 15) {
+                    let formatter = recent.type == GlucoseType.manual.rawValue ? manualGlucoseFormatter : glucoseFormatter
+                    if let string = recent.unfiltered.map({
+                        formatter
+                            .string(from: Double(units == .mmolL ? $0.asMmolL : $0) as NSNumber) ?? "" })
+                    {
+                        glucoseText(string).asAny()
+                            .background { glucoseDrop }
                             .contentTransition(.numericText())
-
-                        Image(systemName: trendSymbol)
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(glucoseColor)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: recent.glucose)
+                        if !scrolling {
+                            let minutesAgo = timerDate.timeIntervalSince(recent.dateString) / 60
+                            let text = timaAgoFormatter.string(for: Double(minutesAgo)) ?? ""
+                            Text(
+                                minutesAgo <= 1 ? NSLocalizedString("Now", comment: "") :
+                                    (text + " " + NSLocalizedString("min", comment: "Short form for minutes") + " ")
+                            )
+                            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: minutesAgo)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .offset(x: 1, y: fontSize >= .extraLarge ? -3 : 0)
+                        }
                     }
-
-                    Text(units.rawValue)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(EsseLineaTheme.textSecondary)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 12) {
-                    metricPill(
-                        title: NSLocalizedString("Change", comment: "Glucose delta"),
-                        value: deltaString,
-                        systemImage: "waveform.path.ecg"
-                    )
-
-                    metricPill(
-                        title: NSLocalizedString("Updated", comment: "Last glucose update"),
-                        value: ageString,
-                        systemImage: "clock"
-                    )
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-
-            if displayExpiration || displaySAGE {
-                sageBadge
-                    .padding(14)
-            }
-        }
-        .frame(maxWidth: 470, minHeight: 150, maxHeight: 170)
-        .padding(.horizontal, 18)
-    }
-
-    private var compactGlucoseView: some View {
-        HStack(spacing: 10) {
-            Text(glucoseString)
-                .font(.system(size: 36, weight: .semibold, design: .rounded))
-                .foregroundStyle(glucoseColor)
-                .contentTransition(.numericText())
-
-            Image(systemName: trendSymbol)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(glucoseColor)
-
-            Text(units.rawValue)
-                .font(.caption)
-                .foregroundStyle(EsseLineaTheme.textSecondary)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(
-            Capsule(style: .continuous)
-                .fill(EsseLineaTheme.surface)
-                .overlay {
-                    Capsule(style: .continuous)
-                        .stroke(EsseLineaTheme.divider, lineWidth: 1)
-                }
-        )
-    }
-
-    private func metricPill(title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(EsseLineaTheme.accent)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(EsseLineaTheme.textSecondary)
-                Text(value)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(EsseLineaTheme.textPrimary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(EsseLineaTheme.surfaceElevated)
-        )
-    }
-
-    private var glucoseString: String {
-        guard let recent = recentGlucose else { return "—" }
-        let formatter = recent.type == GlucoseType.manual.rawValue ? manualGlucoseFormatter : glucoseFormatter
-        let value = recent.unfiltered ?? Decimal(recent.glucose ?? 0)
-        return formatter.string(from: Double(units == .mmolL ? value.asMmolL : value) as NSNumber) ?? "—"
-    }
-
-    private var deltaString: String {
-        guard let delta else { return "—" }
-        let converted = units == .mmolL ? delta.asMmolL : Decimal(delta)
-        let value = deltaFormatter.string(from: converted as NSNumber) ?? "—"
-        return value + " " + units.rawValue
-    }
-
-    private var ageString: String {
-        guard let recent = recentGlucose else { return "—" }
-        let minutesAgo = timerDate.timeIntervalSince(recent.dateString) / 60
-        if minutesAgo <= 1 {
-            return NSLocalizedString("Now", comment: "")
-        }
-        let text = timeAgoFormatter.string(for: Double(minutesAgo)) ?? ""
-        return text + " " + NSLocalizedString("min", comment: "Short form for minutes")
-    }
-
-    private var trendSymbol: String {
-        guard let direction = recentGlucose?.direction else { return "arrow.right" }
-        switch direction {
-        case .doubleUp, .tripleUp:
-            return "arrow.up"
-        case .singleUp:
-            return "arrow.up"
-        case .fortyFiveUp:
-            return "arrow.up.right"
-        case .flat:
-            return "arrow.right"
-        case .fortyFiveDown:
-            return "arrow.down.right"
-        case .doubleDown, .singleDown, .tripleDown:
-            return "arrow.down"
-        case .none, .notComputable, .rateOutOfRange:
-            return "arrow.right"
         }
     }
 
-    private var sageBadge: some View {
-        Group {
+    private func deltaView(_ deltaInt: Int) -> some View {
+        ZStack {
+            let deltaConverted = units == .mmolL ? deltaInt.asMmolL : Decimal(deltaInt)
+            let string = deltaFormatter.string(from: deltaConverted as NSNumber) ?? ""
+            let offset: CGFloat = -7
+
+            Text(string)
+                .font(.callout).foregroundStyle(.secondary)
+                .offset(x: offset, y: 10)
+        }
+        .dynamicTypeSize(DynamicTypeSize.medium ... DynamicTypeSize.large)
+        .frame(maxHeight: .infinity, alignment: .center).offset(x: 110.5, y: -9)
+    }
+
+    private var sageView: some View {
+        ZStack {
             if let date = recentGlucose?.sessionStartDate {
-                let sensorAge: TimeInterval = -date.timeIntervalSinceNow
+                let sensorAge: TimeInterval = (-1 * date.timeIntervalSinceNow)
                 let expiration = sensordays - sensorAge
                 let secondsOfDay = 8.64E4
-                let lineColor: Color = sensorAge >= sensordays - secondsOfDay
-                    ? .red
-                    : sensorAge >= sensordays - secondsOfDay * 2
-                        ? .orange
-                        : EsseLineaTheme.accent
-                let minutesAndHours = (displayExpiration && expiration < secondsOfDay) ||
-                    (displaySAGE && sensorAge < secondsOfDay)
-                let text = !minutesAndHours
-                    ? (remainingTimeFormatterDays.string(from: displayExpiration ? expiration : sensorAge) ?? "")
-                    : (remainingTimeFormatter.string(from: displayExpiration ? expiration : sensorAge) ?? "")
+                let colour = colorScheme == .light ? Color.black : Color.white
+                let lineColour: Color = sensorAge >= sensordays - secondsOfDay * 1 ? Color.red
+                    .opacity(0.9) : sensorAge >= sensordays - secondsOfDay * 2 ? Color
+                    .orange : Color.white
+                let minutesAndHours = (displayExpiration && expiration < 1 * 8.64E4) || (displaySAGE && sensorAge < 1 * 8.64E4)
 
-                Text(text.replacingOccurrences(of: ",", with: " "))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(EsseLineaTheme.textPrimary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(EsseLineaTheme.surfaceElevated)
-                            .overlay {
-                                Capsule(style: .continuous)
-                                    .stroke(lineColor.opacity(0.85), lineWidth: 1.5)
-                            }
-                    )
+                Sage(amount: sensorAge, expiration: expiration, lineColour: lineColour, sensordays: sensordays)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        HStack {
+                            Text(
+                                !minutesAndHours ?
+                                    (remainingTimeFormatterDays.string(from: displayExpiration ? expiration : sensorAge) ?? "")
+                                    .replacingOccurrences(of: ",", with: " ") :
+                                    (remainingTimeFormatter.string(from: displayExpiration ? expiration : sensorAge) ?? "")
+                                    .replacingOccurrences(of: ",", with: " ")
+                            ).foregroundStyle(colour).fontWeight(colorScheme == .dark ? .semibold : .regular)
+                        }
+                    }
             }
+        }
+        .font(.footnote)
+        .dynamicTypeSize(DynamicTypeSize.medium ... DynamicTypeSize.large)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(20)
+        .offset(x: -5)
+    }
+
+    private var adjustments: (degree: Double, x: CGFloat, y: CGFloat) {
+        let yOffset: CGFloat = 17
+        guard let direction = recentGlucose?.direction else {
+            return (90, 0, yOffset)
+        }
+        switch direction {
+        case .doubleUp,
+             .singleUp,
+             .tripleUp:
+            return (0, 0, yOffset)
+        case .fortyFiveUp:
+            return (45, 0, yOffset)
+        case .flat:
+            return (90, 0, yOffset)
+        case .fortyFiveDown:
+            return (135, 0, yOffset)
+        case .doubleDown,
+             .singleDown,
+             .tripleDown:
+            return (180, 0, yOffset)
+        case .none,
+             .notComputable,
+             .rateOutOfRange:
+            return (90, 0, yOffset)
         }
     }
 
-    private var glucoseColor: Color {
-        let whichGlucose = recentGlucose?.glucose ?? 0
-        guard lowGlucose < highGlucose else { return EsseLineaTheme.textPrimary }
-
-        if alarm != nil {
-            return .loopRed
+    private func direction(degree: Double) -> (x: CGFloat, y: CGFloat) {
+        switch degree {
+        case 0:
+            return (0, -2)
+        case 45:
+            return (1, -2)
+        case 90:
+            return (2, 0)
+        case 135:
+            return (1, 2)
+        case 180:
+            return (0, 2)
+        default:
+            return (2, 0)
         }
+    }
+
+    private func glucoseText(_ string: String) -> any View {
+        ZStack {
+            let decimal = string.components(separatedBy: decimalString)
+            if decimal.count > 1 {
+                HStack(spacing: 0) {
+                    Text(decimal[0]).font(scrolling ? .glucoseSmallFont : .glucoseFont)
+                    Text(decimalString).font(.system(size: !scrolling ? 28 : 14).weight(.semibold)).baselineOffset(-10)
+                    Text(decimal[1]).font(.system(size: !scrolling ? 28 : 18)).baselineOffset(!scrolling ? -10 : -4)
+                }
+                .tracking(-1)
+                .offset(x: -2, y: 14)
+                .foregroundColor(alwaysUseColors ? colorOfGlucose : alarm == nil ? .primary : .loopRed)
+            } else {
+                Text(string)
+                    .font(scrolling ? .glucoseSmallFont : .glucoseFontMdDl.width(.condensed))
+                    .foregroundColor(alwaysUseColors ? colorOfGlucose : alarm == nil ? .primary : .loopRed)
+                    .offset(x: string.count > 2 ? -1 : -1, y: 16)
+            }
+        }
+        .offset(y: scrolling ? 3 : 0)
+    }
+
+    private var glucoseDrop: some View {
+        let adjust = adjustments
+        let degree = adjustments.degree
+        let shadowDirection = direction(degree: degree)
+        return Image("glucoseDrops")
+            .resizable()
+            .frame(width: !scrolling ? 140 : 80, height: !scrolling ? 140 : 80).rotationEffect(.degrees(degree))
+            .animation(.bouncy(duration: 1, extraBounce: 0.2), value: degree)
+            .offset(x: adjust.x, y: adjust.y)
+            .shadow(radius: 3, x: shadowDirection.x, y: shadowDirection.y)
+    }
+
+    private var colorOfGlucose: Color {
+        let whichGlucose = recentGlucose?.glucose ?? 0
+        guard lowGlucose < highGlucose else { return .primary }
 
         switch whichGlucose {
         case 0 ..< Int(lowGlucose):
@@ -292,7 +265,7 @@ struct CurrentGlucoseView: View {
         case Int(highGlucose)...:
             return .loopYellow
         default:
-            return EsseLineaTheme.textPrimary
+            return .loopYellow
         }
     }
 }
