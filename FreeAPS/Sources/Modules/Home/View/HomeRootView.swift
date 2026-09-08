@@ -320,6 +320,10 @@ extension Home {
                                         state.showModal(for: .addCarbs(editMode: false, override: false, mode: .image)) }
                                     label: { Label("AI Image Analysis", systemImage: "photo.badge.magnifyingglass")
                                     }
+                                    Button {
+                                        state.showModal(for: .addCarbs(editMode: false, override: false, mode: .voice)) }
+                                    label: { Label("Voice Input", systemImage: "mic.fill")
+                                    }
                                 }
                                 Button {
                                     state.showModal(for: .addCarbs(editMode: false, override: false, mode: .meal)) }
@@ -768,11 +772,11 @@ extension Home {
         }
 
         var timeSetting: some View {
-            let hourLabel = NSLocalizedString("\(state.hours) hours", comment: "") + "   "
+            let hourLabel = "\(state.hours) " + NSLocalizedString("hours", comment: "") + "   "
 
             return Menu(hourLabel) {
                 ForEach([3, 6, 9, 12, 24], id: \.self) { value in
-                    let label = NSLocalizedString("\(value) hours", comment: "")
+                    let label = "\(value) " + NSLocalizedString("hours", comment: "")
                     Button(label, action: { state.hours = value })
                 }
 
@@ -1158,10 +1162,7 @@ extension Home {
 
         var body: some View {
             GeometryReader { geo in
-                if onboarded.first?.firstRun ?? true, let openAPSSettings = state.openAPSSettings {
-                    /// If old iAPS user pre v5.7.1 OpenAPS settings will be reset, but can be restored in View below
-                    importResetSettingsView(settings: openAPSSettings)
-                } else {
+                Group {
                     VStack(spacing: 0) {
                         // Header View
                         headerView(geo)
@@ -1249,9 +1250,6 @@ extension Home {
                 }
             }
             .onAppear {
-                if onboarded.first?.firstRun ?? true {
-                    state.fetchPreferences()
-                }
                 checkBuildExpiration()
             }
             .alert(
@@ -1330,13 +1328,6 @@ extension Home {
                     Text("SMBs and High Temps Disabled.").font(.suggestionParts).foregroundColor(.white).padding(.bottom, 4)
                 }
             }
-        }
-
-        private func importResetSettingsView(settings: Preferences) -> some View {
-            Restore.RootView(
-                resolver: resolver,
-                openAPS: settings
-            )
         }
     }
 }
